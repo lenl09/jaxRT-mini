@@ -1,6 +1,7 @@
 from volume import create_test_volume
 import matplotlib.pyplot as plt
 from render import render_center_ray
+import jax.numpy as jnp
 
 def main():
     volume = create_test_volume()
@@ -12,7 +13,14 @@ def main():
     plt.show()
 
     # Render the center ray
-    avg_value = render_center_ray(volume)
+    ray = render_center_ray(volume)
+    plt.figure()
+    plt.plot(ray)
+    plt.title('Center Ray Samples')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Value')
+    plt.show()
+    avg_value = jnp.mean(ray)
     print("Average value along center ray:", avg_value)
 
 if __name__ == "__main__":

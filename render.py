@@ -16,4 +16,4 @@ def render_center_ray(volume, num_samples=32):
         z_vals.astype(int)
     ], axis=1)
     samples = volume[indices[:,0], indices[:,1], indices[:,2]]
-    return jnp.mean(samples)
+    return samples
