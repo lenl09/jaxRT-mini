@@ -1,0 +1,10 @@
+name: jaxrt
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - matplotlib
+  - pip:
+      - jax[cpu]  # For CPU-only; see JAX docs for GPU
