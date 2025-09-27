@@ -1,6 +1,6 @@
 from volume import create_test_volume
 import matplotlib.pyplot as plt
-from render import render_center_ray
+from render import render_center_ray, render_image
 import jax.numpy as jnp
 
 def main():
@@ -22,6 +22,12 @@ def main():
     plt.show()
     avg_value = jnp.mean(ray)
     print("Average value along center ray:", avg_value)
+
+    img = render_image(volume, ray_sampler_fn=jnp.sum)
+    plt.figure()
+    plt.imshow(img, cmap='gray')
+    plt.title('Rendered Image (Mean Along Rays)')
+    plt.show()
 
 if __name__ == "__main__":
     main()
