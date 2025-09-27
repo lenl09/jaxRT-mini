@@ -4,7 +4,7 @@ from render import render_center_ray
 import jax.numpy as jnp
 
 def main():
-    volume = create_test_volume()
+    volume = create_test_volume(gaussian=True)
     print("Volume shape:", volume.shape)
     # Show the central slice
     center = volume.shape[0] // 2

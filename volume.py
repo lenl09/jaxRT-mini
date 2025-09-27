@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-def create_test_volume(shape=(32, 32, 32), blob_center=None, blob_radius=6):
+def create_test_volume(shape=(32, 32, 32), gaussian=False, blob_center=None, blob_radius=6):
     """
     Creates a 3D volume with a spherical blob in the center.
     shape: tuple of ints, the size of the volume
@@ -17,6 +17,12 @@ def create_test_volume(shape=(32, 32, 32), blob_center=None, blob_radius=6):
     X, Y, Z = jnp.meshgrid(x, y, z, indexing='ij')
     # Compute distance from center
     dist = jnp.sqrt((X - blob_center[0])**2 + (Y - blob_center[1])**2 + (Z - blob_center[2])**2)
-    # Blob: 1 inside radius, 0 outside
-    volume = jnp.where(dist < blob_radius, 1.0, 0.0)
+    
+    if not gaussian:
+        # Blob: 1 inside radius, 0 outside
+        volume = jnp.where(dist < blob_radius, 1.0, 0.0)
+    else:
+        # Gaussian blob with sigma = blob_radius / 4
+        sigma = blob_radius / 4
+        volume = jnp.exp(-dist**2 / (2 * sigma**2))
     return volume
