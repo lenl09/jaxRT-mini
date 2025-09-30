@@ -2,64 +2,91 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import jax.numpy as jnp
 
-def visualize_rays(origins, directions, t_vals, num_rays=10, world_bounds=None):
+def visualize_rays(origins, directions, t_vals, num_rays=8, world_bounds=None):
     """
     Visualize a subset of rays in 3D space.
-    origins: (H, W, 3) array
-    directions: (H, W, 3) array
-    t_vals: (num_samples,) array
-    num_rays: number of rays to plot (spread across image)
-    world_bounds: optional, volume bounds to visualize
+    
+    Args:
+        origins: (H, W, 3) ray origins
+        directions: (H, W, 3) ray directions
+        t_vals: (H, W, num_samples) or (num_samples,) parameter values along rays
+        num_rays: number of rays to visualize
+        world_bounds: optional world bounds for volume visualization
     """
-    H, W = origins.shape[:2]
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     
-    # Pick evenly spaced rays
-    step = max(1, min(H, W) // int(jnp.sqrt(num_rays)))
-    xs = jnp.arange(0, H, step)[:int(jnp.sqrt(num_rays))]
-    ys = jnp.arange(0, W, step)[:int(jnp.sqrt(num_rays))]
+    H, W = origins.shape[:2]
     
-    for x in xs:
-        for y in ys:
-            origin = origins[x, y]
-            direction = directions[x, y]
-            positions = origin + t_vals[:, None] * direction
-            ax.plot(positions[:,0], positions[:,1], positions[:,2], alpha=0.7, linewidth=1)
-            ax.scatter(origin[0], origin[1], origin[2], color='red', s=20)  # Mark origin
+    # Sample rays to visualize
+    ray_indices = []
+    step_h = max(1, H // int(jnp.sqrt(num_rays)))
+    step_w = max(1, W // int(jnp.sqrt(num_rays)))
+    
+    for i in range(0, H, step_h):
+        for j in range(0, W, step_w):
+            ray_indices.append((i, j))
+            if len(ray_indices) >= num_rays:
+                break
+        if len(ray_indices) >= num_rays:
+            break
+    
+    # Plot each ray
+    for i, (h, w) in enumerate(ray_indices):
+        origin = origins[h, w]
+        direction = directions[h, w]
+        
+        # Get t_vals for this specific ray
+        if t_vals.ndim == 3:  # Per-ray optimized t_vals: (H, W, num_samples)
+            ray_t_vals = t_vals[h, w]
+        else:  # Shared t_vals: (num_samples,)
+            ray_t_vals = t_vals
+        
+        # Compute positions along this ray
+        positions = origin[None, :] + ray_t_vals[:, None] * direction[None, :]
+        
+        # Plot the ray
+        ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], 
+               alpha=0.7, linewidth=1, label=f'Ray {i+1}' if i < 5 else "")
+        
+        # Mark the origin
+        ax.scatter(origin[0], origin[1], origin[2], 
+                  color='red', s=20, alpha=0.8)
     
     # Draw volume bounds if provided
     if world_bounds is not None:
-        x_min, x_max = world_bounds[0]
-        y_min, y_max = world_bounds[1] 
-        z_min, z_max = world_bounds[2]
+        (x_min, x_max), (y_min, y_max), (z_min, z_max) = world_bounds
         
-        # Draw volume cube wireframe
-        from itertools import product
-        corners = list(product([x_min, x_max], [y_min, y_max], [z_min, z_max]))
+        # Draw wireframe box
+        vertices = [
+            [x_min, y_min, z_min], [x_max, y_min, z_min],
+            [x_max, y_max, z_min], [x_min, y_max, z_min],
+            [x_min, y_min, z_max], [x_max, y_min, z_max],
+            [x_max, y_max, z_max], [x_min, y_max, z_max]
+        ]
         
-        # Draw edges
+        # Define the 12 edges of the cube
         edges = [
-            # Bottom face
-            (0, 1), (1, 3), (3, 2), (2, 0),
-            # Top face  
-            (4, 5), (5, 7), (7, 6), (6, 4),
-            # Vertical edges
-            (0, 4), (1, 5), (2, 6), (3, 7)
+            [0, 1], [1, 2], [2, 3], [3, 0],  # bottom face
+            [4, 5], [5, 6], [6, 7], [7, 4],  # top face
+            [0, 4], [1, 5], [2, 6], [3, 7]   # vertical edges
         ]
         
         for edge in edges:
-            p1, p2 = corners[edge[0]], corners[edge[1]]
-            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], 'b-', alpha=0.3, linewidth=2)
+            p1, p2 = vertices[edge[0]], vertices[edge[1]]
+            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], 
+                   'k--', alpha=0.5, linewidth=1)
     
-    ax.set_xlabel('World X')
-    ax.set_ylabel('World Y') 
-    ax.set_zlabel('World Z')
-    ax.set_title('Ray Visualization (World Coordinates)')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title(f'Ray Visualization ({len(ray_indices)} rays)')
     
-    # Set equal aspect ratio
-    ax.set_box_aspect([1,1,1])
+    # Add legend for first few rays
+    if len(ray_indices) <= 5:
+        ax.legend()
     
+    plt.tight_layout()
     plt.show()
 
 def visualize_volume_slice(volume, slice_axis=2, slice_idx=None):
