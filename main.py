@@ -1,6 +1,8 @@
-from volume import create_test_volume, get_volume_world_bounds
-from camera import generate_rays
-from render import sample_volume_along_rays
+from volume import create_test_spherical_volume, create_cube_volume, get_volume_world_bounds
+from camera import generate_rays, look_at, move_camera_along_view, setup_camera_looking_at
+from render import (sample_volume_along_rays, alpha_compositing, 
+                   maximum_intensity_projection, average_intensity_projection,
+                   sum_intensity_projection, x_ray_projection)
 from visualize import visualize_rays
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
@@ -8,14 +10,14 @@ import jax.numpy as jnp
 def main():
     # 1. Create the volume with physical scale
     volume_shape = (128, 128, 128)
-    volume = create_test_volume(shape=volume_shape, gaussian=False, blob_radius=36)
+    volume = create_test_spherical_volume(shape=volume_shape, gaussian=False, blob_radius=36)
     
     # 2. Define world space bounds (volume occupies a 4x4x4 cube centered at origin)
     world_size = 4.0  # Physical size of the volume in world units
     world_bounds = get_volume_world_bounds(volume_shape, world_size)
     
     # 3. Set up camera parameters in world coordinates
-    image_shape = (128, 128)  # Output image size (can be changed without affecting scale!)
+    image_shape = (512, 512)  # Output image size (can be changed without affecting scale!)
     
     # Camera positioned outside the volume looking towards center
     camera_pos = jnp.array([0.0, 0.0, -4.0])  # 3 units back from volume center
@@ -30,15 +32,29 @@ def main():
     far = 8.0    # Stop sampling 8 units from camera (well past volume)
     num_samples = 128
     
-    # 4. Generate rays in world coordinates
-    origins, directions, t_vals = generate_rays(
+    # 4. Generate orthographic rays with volume intersection optimization
+    ray_result = generate_rays(
         camera_pos, view_dir, image_shape, num_samples,
         sensor_width=sensor_width, sensor_height=sensor_height,
-        near=near, far=far
+        near=near, far=far, world_bounds=world_bounds
     )
     
-    # 5. Render the image using world coordinates
+    if len(ray_result) == 4:
+        origins, directions, t_vals, intersects = ray_result
+        print(f"Ray optimization: {jnp.sum(intersects)} / {jnp.prod(jnp.array(image_shape))} rays intersect volume")
+    else:
+        origins, directions, t_vals = ray_result
+        intersects = None
+    
+    # 5. Render the image using alpha compositing (more realistic)
     ray_samples = sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds)
+    
+    # Compute step size
+    dt = (far - near) / num_samples
+    
+    # Use alpha compositing instead of simple sum
+    img_alpha = alpha_compositing(ray_samples, dt=dt, absorption_coeff=0.1, emission_coeff=1.0)
+    img_sum = jnp.sum(ray_samples, axis=-1)  # Keep old method for comparison
     
     # Debug: print center ray origin in world coordinates
     center_ray_origin = origins[image_shape[0]//2, image_shape[1]//2]
@@ -58,65 +74,19 @@ def main():
     plt.title('Center Ray Samples')
     plt.show() 
     
-    # Render final image
-    img_sum = jnp.sum(ray_samples, axis=-1)
+    # Plot both methods
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
-    plt.figure()
-    plt.imshow(img_sum, cmap='gray')
-    plt.title(f'Volume Rendering (Resolution: {image_shape[0]}x{image_shape[1]})')
-    plt.colorbar()
-    plt.show()
-
-def test_resolution_independence():
-    """
-    Test that changing image resolution doesn't affect the scale of the rendered scene.
-    """
-    print("\n=== Testing Resolution Independence ===")
+    im1 = ax1.imshow(img_sum, cmap='gray')
+    ax1.set_title('Sum Projection')
+    plt.colorbar(im1, ax=ax1)
     
-    # Create volume
-    volume_shape = (64, 64, 64)
-    volume = create_test_volume(shape=volume_shape, gaussian=False, blob_radius=16)
-    world_bounds = get_volume_world_bounds(volume_shape, world_size=4.0)
-    
-    # Fixed camera parameters in world coordinates
-    camera_pos = jnp.array([0.0, 0.0, -4.0])
-    view_dir = jnp.array([0.1, 0.2, 1.0])
-    sensor_width = 5.0
-    sensor_height = 5.0
-    near, far = 0.1, 8.0
-    num_samples = 64
-    
-    # Test different image resolutions
-    resolutions = [(32, 32), (64, 64), (128, 128)]
-    
-    fig, axes = plt.subplots(1, len(resolutions), figsize=(15, 5))
-    
-    for i, image_shape in enumerate(resolutions):
-        # Generate rays (same physical sensor, different pixel count)
-        origins, directions, t_vals = generate_rays(
-            camera_pos, view_dir, image_shape, num_samples,
-            sensor_width=sensor_width, sensor_height=sensor_height,
-            near=near, far=far
-        )
-        
-        # Render
-        ray_samples = sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds)
-        img_sum = jnp.sum(ray_samples, axis=-1)
-        
-        # Plot
-        im = axes[i].imshow(img_sum, cmap='gray', extent=[-sensor_width/2, sensor_width/2, -sensor_height/2, sensor_height/2])
-        axes[i].set_title(f'{image_shape[0]}x{image_shape[1]} pixels')
-        axes[i].set_xlabel('World X')
-        axes[i].set_ylabel('World Y')
-        
-        # Print center ray origin to verify it's the same
-        center_origin = origins[image_shape[0]//2, image_shape[1]//2]
-        print(f"Resolution {image_shape}: Center ray origin = {center_origin}")
+    im2 = ax2.imshow(img_alpha, cmap='gray')
+    ax2.set_title('Alpha Compositing')
+    plt.colorbar(im2, ax=ax2)
     
     plt.tight_layout()
-    plt.suptitle('Same Scene at Different Resolutions (Scale Independent)', y=1.02)
     plt.show()
 
 if __name__ == "__main__":
     main()
-    test_resolution_independence()
