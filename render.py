@@ -20,7 +20,7 @@ def render_center_ray(volume, num_samples=32):
     samples = volume[indices[:,0], indices[:,1], indices[:,2]]
     return samples
     
-def sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds):
+def sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds, interpolate=True):
     """
     Sample volume values along rays.
     
@@ -30,6 +30,7 @@ def sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds):
         directions: (H, W, 3) ray directions in world coordinates  
         t_vals: (H, W, num_samples) parameter values for sampling along rays
         world_bounds: ((x_min, x_max), (y_min, y_max), (z_min, z_max)) world coordinate bounds
+        interpolate: if True, use trilinear interpolation; if False, use nearest neighbor
         
     Returns:
         ray_samples: (H, W, num_samples) sampled volume values along each ray
@@ -42,8 +43,11 @@ def sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds):
         # Convert world coordinates to volume indices
         volume_indices = world_to_volume_indices(positions, world_bounds, volume.shape)
         
-        # Sample volume at these positions using trilinear interpolation
-        values = sample_volume_trilinear(volume, volume_indices)
+        # Sample volume at these positions
+        if interpolate:
+            values = sample_volume_trilinear(volume, volume_indices)
+        else:
+            values = sample_volume_nearest(volume, volume_indices)
         
         return values
     
@@ -339,3 +343,32 @@ def sample_volume_trilinear(volume, indices):
     value = v0 * (1 - fx) + v1 * fx
     
     return value
+
+def sample_volume_nearest(volume, indices):
+    """
+    Sample volume using nearest neighbor interpolation.
+    
+    Args:
+        volume: (X, Y, Z) volume data
+        indices: (..., 3) continuous indices for sampling
+        
+    Returns:
+        values: (...) sampled volume values (nearest neighbor)
+    """
+    # Get volume dimensions
+    X, Y, Z = volume.shape
+    
+    # Extract continuous indices and round to nearest integers
+    x = jnp.round(indices[..., 0]).astype(jnp.int32)
+    y = jnp.round(indices[..., 1]).astype(jnp.int32)
+    z = jnp.round(indices[..., 2]).astype(jnp.int32)
+    
+    # Clamp to volume bounds
+    x = jnp.clip(x, 0, X - 1)
+    y = jnp.clip(y, 0, Y - 1)
+    z = jnp.clip(z, 0, Z - 1)
+    
+    # Sample at nearest neighbor indices
+    values = volume[x, y, z]
+    
+    return values

@@ -30,7 +30,7 @@ def main():
     # Ray marching parameters
     near = 0.1   # Start sampling 0.1 units from camera
     far = 8.0    # Stop sampling 8 units from camera (well past volume)
-    num_samples = 128
+    num_samples = 64
     
     # 4. Generate orthographic rays with volume intersection optimization
     ray_result = generate_rays(
@@ -47,15 +47,18 @@ def main():
         intersects = None
     
     # 5. Render the image using alpha compositing (more realistic)
-    ray_samples = sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds)
-    
+    # Choose interpolation method: True = trilinear, False = nearest neighbor
+    use_interpolation = True  # Change this to False for nearest neighbor sampling
+    ray_samples_interp = sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds, interpolate=use_interpolation)
+    ray_samples_nearest = sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds, interpolate=False)
     # Compute step size
     dt = (far - near) / num_samples
     
     # Use alpha compositing instead of simple sum
-    img_alpha = alpha_compositing(ray_samples, dt=dt, absorption_coeff=0.1, emission_coeff=1.0)
-    img_sum = jnp.sum(ray_samples, axis=-1)  # Keep old method for comparison
-    
+    img_alpha = alpha_compositing(ray_samples_interp, dt=dt, absorption_coeff=0.1, emission_coeff=1.0)
+    img_sum_nearest = jnp.sum(ray_samples_nearest, axis=-1)  # Keep old method for comparison
+    img_sum_interp = jnp.sum(ray_samples_interp, axis=-1)
+
     # Debug: print center ray origin in world coordinates
     center_ray_origin = origins[image_shape[0]//2, image_shape[1]//2]
     print(f"Center ray origin (world coords): {center_ray_origin}")
@@ -68,21 +71,21 @@ def main():
     
     # Plot center ray samples
     plt.figure()
-    plt.plot(ray_samples[image_shape[0]//2, image_shape[1]//2])
+    plt.plot(ray_samples_interp[image_shape[0]//2, image_shape[1]//2])
     plt.xlabel('Sample index')
     plt.ylabel('Volume value')
-    plt.title('Center Ray Samples')
+    plt.title('Center Ray Samples (Trilinear)')
     plt.show() 
     
     # Plot both methods
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
-    im1 = ax1.imshow(img_sum, cmap='gray')
-    ax1.set_title('Sum Projection')
+    im1 = ax1.imshow(img_sum_nearest, cmap='gray')
+    ax1.set_title('Sum Projection (Nearest)')
     plt.colorbar(im1, ax=ax1)
     
-    im2 = ax2.imshow(img_alpha, cmap='gray')
-    ax2.set_title('Alpha Compositing')
+    im2 = ax2.imshow(img_sum_interp, cmap='gray')
+    ax2.set_title('Sum Projection (Trilinear)')
     plt.colorbar(im2, ax=ax2)
     
     plt.tight_layout()
