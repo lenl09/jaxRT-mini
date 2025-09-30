@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax
+from volume import world_to_volume_coords
 
 def render_center_ray(volume, num_samples=32):
     """
@@ -19,10 +20,53 @@ def render_center_ray(volume, num_samples=32):
     samples = volume[indices[:,0], indices[:,1], indices[:,2]]
     return samples
 
+def sample_volume_along_rays(volume, origins, directions, t_vals, world_bounds):
+    """
+    For each ray, sample the volume at positions: origin + t * direction
+    Uses world coordinates and transforms to volume indices.
+    
+    Args:
+        volume: (D, H, W) volume data
+        origins: (H, W, 3) ray origins in world coordinates
+        directions: (H, W, 3) ray directions (normalized) 
+        t_vals: (num_samples,) sample distances along rays
+        world_bounds: volume world space bounds
+        
+    Returns: 
+        samples (H, W, num_samples)
+    """
+    H, W = origins.shape[:2]
+    
+    def sample_ray(origin, direction):
+        # Compute world positions along the ray
+        positions = origin + t_vals[:, None] * direction  # (num_samples, 3)
+        
+        # Transform to volume coordinates
+        volume_coords = world_to_volume_coords(positions, volume.shape, world_bounds)
+        
+        # Convert to integer indices and clamp to volume bounds
+        indices = jnp.clip(
+            jnp.round(volume_coords).astype(int), 
+            0, 
+            jnp.array(volume.shape) - 1
+        )
+        
+        # Sample the volume
+        samples = volume[indices[:,0], indices[:,1], indices[:,2]]
+        return samples  # Return all samples along the ray
+    
+    # Vectorize over all rays
+    all_samples = jax.vmap(
+        lambda o, d: sample_ray(o, d),
+        in_axes=(0, 0)
+    )(origins.reshape(-1, 3), directions.reshape(-1, 3))
+    
+    return all_samples.reshape(H, W, len(t_vals))
+
 def render_image(volume, num_samples=32, ray_sampler_fn=None):
     """
     Renders a 2D image by casting rays along the z-axis for each (x, y) pixel.
-    ray_sampler_fn: function that takes ray samples and returns a pixel value.
+    ray_sampler_fn: function that takes ray samples and returns a pixel value. Default is averaging.
     """
     shape = volume.shape
     H, W = shape[0], shape[1]

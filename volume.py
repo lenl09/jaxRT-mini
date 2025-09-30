@@ -26,3 +26,41 @@ def create_test_volume(shape=(32, 32, 32), gaussian=False, blob_center=None, blo
         sigma = blob_radius / 4
         volume = jnp.exp(-dist**2 / (2 * sigma**2))
     return volume
+
+def world_to_volume_coords(world_pos, volume_shape, world_bounds):
+    """
+    Transform world coordinates to volume indices.
+    
+    Args:
+        world_pos: (..., 3) array of world coordinates
+        volume_shape: (D, H, W) shape of the volume
+        world_bounds: ((min_x, max_x), (min_y, max_y), (min_z, max_z)) world space bounds
+    
+    Returns:
+        volume_indices: (..., 3) array of volume indices (can be fractional)
+    """
+    world_min = jnp.array([world_bounds[0][0], world_bounds[1][0], world_bounds[2][0]])
+    world_max = jnp.array([world_bounds[0][1], world_bounds[1][1], world_bounds[2][1]])
+    volume_shape_array = jnp.array(volume_shape)
+    
+    # Normalize world coordinates to [0, 1]
+    normalized = (world_pos - world_min) / (world_max - world_min)
+    
+    # Scale to volume indices [0, shape-1]
+    volume_indices = normalized * (volume_shape_array - 1)
+    
+    return volume_indices
+
+def get_volume_world_bounds(volume_shape, world_size=4.0):
+    """
+    Get the world space bounds for a volume.
+    
+    Args:
+        volume_shape: (D, H, W) shape of the volume
+        world_size: float, size of the volume in world units (cube)
+    
+    Returns:
+        world_bounds: ((min_x, max_x), (min_y, max_y), (min_z, max_z))
+    """
+    half_size = world_size / 2
+    return ((-half_size, half_size), (-half_size, half_size), (-half_size, half_size))
